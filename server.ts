@@ -16,11 +16,20 @@ async function startServer() {
 
   const PORT = 3000;
 
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", rooms: rooms.size });
+  });
+
   // Store rooms: { pin: [socketId1, socketId2] }
   const rooms = new Map<string, string[]>();
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
+
+    socket.onAny((event, ...args) => {
+      console.log(`Event: ${event}`, args);
+    });
 
     socket.on("create-room", (pin: string) => {
       if (rooms.has(pin)) {
@@ -34,6 +43,7 @@ async function startServer() {
     });
 
     socket.on("join-room", (pin: string) => {
+      console.log(`Join attempt: ${socket.id} for PIN: ${pin}`);
       const room = rooms.get(pin);
       if (!room) {
         socket.emit("error", "Room not found");

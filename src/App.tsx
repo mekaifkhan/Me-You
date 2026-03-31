@@ -6,7 +6,8 @@ import Peer from "simple-peer";
 import { cn } from "./lib/utils";
 
 // --- Types ---
-type View = "landing" | "connect" | "dashboard" | "chat" | "call";
+type View = "profile" | "landing" | "connect" | "dashboard" | "chat" | "call";
+type Gender = "boy" | "girl" | null;
 type CallType = "voice" | "video";
 
 interface Message {
@@ -18,7 +19,9 @@ interface Message {
 
 // --- Main App Component ---
 export default function App() {
-  const [view, setView] = useState<View>("landing");
+  const [view, setView] = useState<View>("profile");
+  const [name, setName] = useState("");
+  const [gender, setGender] = useState<Gender>(null);
   const [pin, setPin] = useState("");
   const [isCreator, setIsCreator] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -30,6 +33,7 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [socketStatus, setSocketStatus] = useState<"connecting" | "connected" | "disconnected">("connecting");
 
   const socketRef = useRef<Socket | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -42,12 +46,30 @@ export default function App() {
 
     socketRef.current = io();
 
+    socketRef.current.on("connect", () => {
+      console.log("Socket connected:", socketRef.current?.id);
+      setSocketStatus("connected");
+    });
+
+    socketRef.current.on("disconnect", () => {
+      console.log("Socket disconnected");
+      setSocketStatus("disconnected");
+    });
+
+    socketRef.current.on("connect_error", (err) => {
+      console.error("Socket connection error:", err);
+      setSocketStatus("disconnected");
+      setError("Connection error. Retrying...");
+    });
+
     socketRef.current.on("room-created", (createdPin) => {
+      console.log("Room created with PIN:", createdPin);
       setPin(createdPin);
       setView("connect");
     });
 
     socketRef.current.on("user-connected", ({ pin: roomPin }) => {
+      console.log("Partner connected to room:", roomPin);
       setPin(roomPin);
       setConnected(true);
       setView("dashboard");
@@ -78,12 +100,20 @@ export default function App() {
 
   // --- Handlers ---
   const handleCreateConnection = () => {
+    if (!socketRef.current?.connected) {
+      setError("Not connected to server. Please wait...");
+      return;
+    }
     const newPin = Math.floor(100000 + Math.random() * 900000).toString();
     setIsCreator(true);
     socketRef.current?.emit("create-room", newPin);
   };
 
   const handleJoinConnection = (inputPin: string) => {
+    if (!socketRef.current?.connected) {
+      setError("Not connected to server. Please wait...");
+      return;
+    }
     setIsCreator(false);
     socketRef.current?.emit("join-room", inputPin);
   };
@@ -218,6 +248,73 @@ export default function App() {
           </motion.div>
         )}
 
+        {view === "profile" && (
+          <motion.div
+            key="profile"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="flex flex-col items-center justify-center min-h-screen p-6"
+          >
+            <div className="w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl shadow-rose-100 space-y-8">
+              <div className="text-center space-y-2">
+                <Heart className="w-12 h-12 text-rose-500 mx-auto fill-rose-500" />
+                <h1 className="text-3xl font-bold">Welcome</h1>
+                <p className="text-rose-400">Tell us a bit about yourself</p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-rose-900 ml-1">Your Name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter your name"
+                    className="w-full px-4 py-3 rounded-xl border-2 border-rose-100 focus:border-rose-300 outline-none transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-rose-900 ml-1">I am a...</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setGender("boy")}
+                      className={cn(
+                        "py-4 rounded-xl font-bold transition-all border-2",
+                        gender === "boy" 
+                          ? "bg-blue-50 border-blue-500 text-blue-600 shadow-lg shadow-blue-100" 
+                          : "bg-white border-rose-50 text-rose-300 hover:border-rose-100"
+                      )}
+                    >
+                      Boy 👦
+                    </button>
+                    <button
+                      onClick={() => setGender("girl")}
+                      className={cn(
+                        "py-4 rounded-xl font-bold transition-all border-2",
+                        gender === "girl" 
+                          ? "bg-rose-50 border-rose-500 text-rose-600 shadow-lg shadow-rose-100" 
+                          : "bg-white border-rose-50 text-rose-300 hover:border-rose-100"
+                      )}
+                    >
+                      Girl 👧
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  disabled={!name || !gender}
+                  onClick={() => setView("landing")}
+                  className="w-full bg-rose-500 text-white py-4 rounded-xl font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {view === "landing" && (
           <motion.div
             key="landing"
@@ -234,12 +331,12 @@ export default function App() {
               <Heart className="w-24 h-24 text-rose-500 fill-rose-500" />
             </motion.div>
             <h1 className="text-5xl font-bold mb-4 tracking-tight">Me and You</h1>
-            <p className="text-rose-400 mb-12 max-w-xs">A private space for just the two of you. Secure, intimate, and always connected.</p>
+            <p className="text-rose-400 mb-12 max-w-xs">Hi {name}! A private space for just the two of you. Secure, intimate, and always connected.</p>
             <button
               onClick={() => setView("connect")}
               className="bg-rose-500 hover:bg-rose-600 text-white px-10 py-4 rounded-2xl font-semibold text-lg shadow-xl shadow-rose-200 transition-all active:scale-95"
             >
-              Connect with Her
+              Connect with {gender === "boy" ? "Her" : "Him"}
             </button>
           </motion.div>
         )}
@@ -273,16 +370,25 @@ export default function App() {
                   </div>
                   <div className="space-y-4">
                     <input
+                      id="pin-input"
                       type="text"
                       placeholder="Enter 6-digit PIN"
                       className="w-full px-4 py-4 rounded-xl border-2 border-rose-100 focus:border-rose-300 outline-none text-center text-2xl tracking-widest font-mono"
                       maxLength={6}
-                      onChange={(e) => {
-                        if (e.target.value.length === 6) {
-                          handleJoinConnection(e.target.value);
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById("pin-input") as HTMLInputElement;
+                        if (input.value.length === 6) {
+                          handleJoinConnection(input.value);
+                        } else {
+                          setError("Please enter a 6-digit PIN");
                         }
                       }}
-                    />
+                      className="w-full bg-rose-500 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-rose-600 transition-all active:scale-95"
+                    >
+                      Join Connection
+                    </button>
                     <p className="text-center text-sm text-rose-300">Enter the PIN shared by your partner</p>
                   </div>
                 </div>
@@ -331,10 +437,17 @@ export default function App() {
                   window.location.reload();
                 }}
                 className="text-rose-300 hover:text-rose-500"
+                title="Disconnect"
               >
                 <X size={24} />
               </button>
             </header>
+
+            {socketStatus === "disconnected" && (
+              <div className="bg-rose-100 text-rose-600 px-4 py-2 text-center text-sm">
+                You are offline. <button onClick={() => socketRef.current?.connect()} className="underline font-bold">Reconnect</button>
+              </div>
+            )}
 
             <main className="flex-grow flex flex-col items-center justify-center p-6 space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-2xl">
