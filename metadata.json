@@ -1,0 +1,8 @@
+{
+  "name": "Me and You",
+  "description": "A private, secure communication platform for couples with real-time chat, voice, and video calls.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
